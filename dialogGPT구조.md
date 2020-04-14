@@ -4,13 +4,19 @@
 
 ## 파일 구조
 
-* | configs
-  * | 117M
-    * | config.json 
-    * | merges.txt
-    * | vocab.json : 50,256 토큰
+* |-> configs
+  * |-> 117M
+    * config.json 
+    * merges.txt
+    * vocab.json : 50,256 토큰
   * | 345M
+    * config.json 
+    * merges.txt
+    * vocab.json : 50,256 토큰
   * | 762M
+    * config.json 
+    * merges.txt
+    * vocab.json : 50,256 토큰
 * | data
 * dstc
 * gpt2_training
