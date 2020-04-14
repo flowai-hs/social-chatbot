@@ -39,13 +39,12 @@
 * |-> **reddit_extractor** : reddit 데이터 전처리하는 파일들 e.g. 워드 블록을 하고 센텐스를 만들고 필요없는 기호 빼고 등
     * (폴더) config, data, lists, src, (파일) makefile
     
-* LSP-generic.yml
-* LSP-linux.yml
-* LSP-train.yml
-* MANIFEST.in
-* data_config.py
-* data_loader.py
-* **demo.py**
+* LSP-generic.yml : 의존성 목록이나 pip설치 목록
+* LSP-linux.yml : 리눅스 관련 의존성 목록이나 pip설치 목록
+* **LSP-train.py** : GPT2 scratch/fine-tuning. 학습 실행 파일 huggingface GPT-2 구현 기반 수정
+* data_config.py : 데이터 관련 설정, 데이터 위치 등
+* data_loader.py : 데이터를 로드하는 파일
+* **demo.py** 
 * demo_utils.py
 * env.py
 * prepropy
