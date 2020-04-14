@@ -31,9 +31,14 @@
  
 * |-> lsp_model
     * modeling_gpt2.py : 파이토치 OpenAI GPT-2 model
-
-* |-> pycocoevalcap
-* |-> reddit_extractor
+    * optim.py : 최적화 관련 함수들 e.g. adam 등
+    
+* |-> pycocoevalcap : Automatic 평가용 파일
+    * (폴더) blue, cider, metero, rouge, tokenizer, (파일) eval.py
+    
+* |-> reddit_extractor : reddit 데이터 전처리하는 파일들 e.g. 워드 블록을 하고 센텐스를 만들고 필요없는 기호 빼고 등
+    * (폴더) config, data, lists, src, (파일) makefile
+    
 * LSP-generic.yml
 * LSP-linux.yml
 * LSP-train.yml
