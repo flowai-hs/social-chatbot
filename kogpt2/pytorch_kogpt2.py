@@ -40,38 +40,54 @@ kogpt2_config = {
     "n_head": 12,
     "n_layer": 12,
     "n_positions": 1024,
-    "vocab_size": 50000
+    "vocab_size": 50000,
+    'embd_pdrop': 0.1,
+    'attn_pdrop': 0.1,
+    'resid_pdrop': 0.1
 }
 
 
 def get_pytorch_kogpt2_model(ctx='cpu', cachedir='~/kogpt2/'):
-    # download model
-    model_info = pytorch_kogpt2
-    model_path = _download(model_info['url'],
-                           model_info['fname'],
-                           model_info['chksum'],
-                           cachedir=cachedir)
-    # download vocab
-    vocab_info = tokenizer
-    vocab_path = _download(vocab_info['url'],
-                           vocab_info['fname'],
-                           vocab_info['chksum'],
-                           cachedir=cachedir)
-    return get_kogpt2_model(model_path, vocab_path, ctx)
+  # download model
+  model_info = pytorch_kogpt2
+  model_path = _download(model_info['url'],
+                         model_info['fname'],
+                         model_info['chksum'],
+                         cachedir=cachedir)
+  # download vocab
+  vocab_info = tokenizer
+  vocab_path = _download(vocab_info['url'],
+                         vocab_info['fname'],
+                         vocab_info['chksum'],
+                         cachedir=cachedir)
+  return get_kogpt2_model(model_path, vocab_path, ctx)
+
+
+def remove_module(d):
+  ret = {}
+  for k, v in d.items():
+    if k.startswith('module.'):
+      ret[k[7:]] = v
+    else:
+      return d
+
+  return ret
 
 
 def get_kogpt2_model(model_file, vocab_file, ctx="cpu"):
-    kogpt2model = GPT2LMHeadModel(config=GPT2Config.from_dict(kogpt2_config))
-    kogpt2model.load_state_dict(torch.load(model_file))
-    device = torch.device(ctx)
-    kogpt2model.to(device)
-    kogpt2model.eval()
-    vocab_b_obj = nlp.vocab.BERTVocab.from_sentencepiece(vocab_file,
-                                                         mask_token=None,
-                                                         sep_token=None,
-                                                         cls_token=None,
-                                                         unknown_token='<unk>',
-                                                         padding_token='<pad>',
-                                                         bos_token='<s>',
-                                                         eos_token='</s>')
-    return kogpt2model, vocab_b_obj
+  kogpt2model = GPT2LMHeadModel(config=GPT2Config.from_dict(kogpt2_config))
+  d = torch.load(model_file)
+  d = remove_module(d)
+  kogpt2model.load_state_dict(d)
+  device = torch.device(ctx)
+  kogpt2model.to(device)
+  kogpt2model.eval()
+  vocab_b_obj = nlp.vocab.BERTVocab.from_sentencepiece(vocab_file,
+                                                       mask_token=None,
+                                                       sep_token=None,
+                                                       cls_token=None,
+                                                       unknown_token='<unk>',
+                                                       padding_token='<pad>',
+                                                       bos_token='<s>',
+                                                       eos_token='</s>')
+  return kogpt2model, vocab_b_obj
