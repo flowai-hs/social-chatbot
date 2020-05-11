@@ -32,7 +32,7 @@ from transformers.modeling_utils import Conv1D, PreTrainedModel, SequenceSummary
 
 logger = logging.getLogger(__name__)
 
-# 프리트레인 모델 파일을 가져다 쓰기 위해 딕셔너리 형태로 선언
+# 프리트레인 모델의 위치입니다.
 GPT2_PRETRAINED_MODEL_ARCHIVE_MAP = {
     "gpt2": "https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-pytorch_model.bin",
     "gpt2-medium": "https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-medium-pytorch_model.bin",
@@ -41,12 +41,11 @@ GPT2_PRETRAINED_MODEL_ARCHIVE_MAP = {
     "distilgpt2": "https://s3.amazonaws.com/models.huggingface.co/bert/distilgpt2-pytorch_model.bin",
 }
 
-#목적: 텐서플로우의 웨이트값을 파이토치에서 사용하기 위한 메서드
-#기능: 알고리즘에 직접적인 관련이 없으며 형태를 맞춰주기 위한 기능
+#목적: 텐서플로우의 웨이트값을 파이토치에서 사용하기 위한 함수입니다.
+#기능: 알고리즘에 직접적인 관련이 없으며 형태를 맞춰주기 위한 기능입니다.
 def load_tf_weights_in_gpt2(model, config, gpt2_checkpoint_path):
     """ Load tf checkpoints in a pytorch model
     """
-    #필요한 라이브러리 임포트
     try:
         import re
         import tensorflow as tf
@@ -58,7 +57,7 @@ def load_tf_weights_in_gpt2(model, config, gpt2_checkpoint_path):
         raise
     tf_path = os.path.abspath(gpt2_checkpoint_path)
     logger.info("Converting TensorFlow checkpoint from {}".format(tf_path))
-    # Load weights from TF model
+    # 텐서플로우 모델의 가중치를 로드합니다.
     init_vars = tf.train.list_variables(tf_path)
     names = []
     arrays = []
@@ -98,24 +97,24 @@ def load_tf_weights_in_gpt2(model, config, gpt2_checkpoint_path):
         pointer.data = torch.from_numpy(array)
     return model
 
-# 목적:어텐션 클라스
-# 가능: 에텐션 관련 메서드
-# nn.Mudule의 서브클라스
+# 목적: 어텐션 레이어를 정의, 계산하는 클라스입니다.
+# 가능: 에텐션 관련 메서드가 담겨있습니다.
+# 파이토치의 nn.Mudule의 서브클라스입니다.
 class Attention(nn.Module):
-    # 파이토치의 내장된 모델을 쓰기위한 필수조건 : __init__과 forward를 오버라이드 해야함
-    # override란 상속받은 클래스가 메서드 기능을 재정의, 같은 이름으로 기능을 바꾸고 싶을 때 주로 사용
-    # 모델에서 사용될 module을 정의
+    # 파이토치의 내장된 모델을 쓰기위한 필수조건으로 __init__과 forward를 오버라이드 해야합니다.
+    # override란 상속받은 클래스가 메서드 기능을 재정의, 같은 이름으로 기능을 바꾸고 싶을 때 주로 사용합니다.
+    # 모델에서 사용될 module을 정의합니다.
     def __init__(self, nx, n_ctx, config, scale=False):
         super().__init__()
         self.output_attentions = config.output_attentions
 
         n_state = nx  # 어텐션: n_state=768 (nx=n_embd)
         # [switch nx => 텐서플로우의 구현을 유지하기 위함]
-        assert n_state % config.n_head == 0 # 값을 보증하기 위해, 즉 원하는 값만 받고 싶다.
+        assert n_state % config.n_head == 0 # 값을 보증하기 위해, 즉 원하는 값만 받고 싶다는 뜻입니다.
         self.register_buffer("bias", torch.tril(torch.ones(n_ctx, n_ctx)).view(1, 1, n_ctx, n_ctx))
         self.n_head = config.n_head #설정의 n_head값 사용함.
         self.split_size = n_state #위에 n_state가 스플릿 사이즈가 됨.
-        self.scale = scale
+        self.scale = scale # 키차원 값의 제곱근으로 스케일합니다.
 
         self.c_attn = Conv1D(n_state * 3, nx) # q,k,v를 생성할 때 사용하는 가중치 매트릭스
         self.c_proj = Conv1D(n_state, nx) # 다음 서브레이어로 연결시 사용하는 가중치 매트릭스
@@ -145,19 +144,20 @@ class Attention(nn.Module):
         self.n_head = self.n_head - len(heads)
         self.pruned_heads = self.pruned_heads.union(heads)
 
+    # scaled dot product attetion 계산 메서드입니다.
     def _attn(self, q, k, v, attention_mask=None, head_mask=None):
         w = torch.matmul(q, k) # q와k의 내적을 구함
-        if self.scale:
+        if self.scale:                                # 키차원의 제곱근으로 스케일링 합니다.
             w = w / math.sqrt(v.size(-1)) 
         nd, ns = w.size(-2), w.size(-1)
         b = self.bias[:, :, ns - nd : ns, :ns]
         w = w * b - 1e4 * (1 - b)
 
-        if attention_mask is not None:
+        if attention_mask is not None:       # 어텐션 마스크를 적용합니다.
             # Apply the attention mask
             w = w + attention_mask
 
-        w = nn.Softmax(dim=-1)(w) # w에 위에서 계산된 값을 소프트맥스
+        w = nn.Softmax(dim=-1)(w) # w에 위에서 계산된 값을 소프트맥스합니다.
         w = self.attn_dropout(w)
 
         # Mask heads if we want to
@@ -167,9 +167,9 @@ class Attention(nn.Module):
         outputs = [torch.matmul(w, v)]
         if self.output_attentions:
             outputs.append(w)
-        return outputs
+        return outputs    # 다음 레이어에 넘겨줄 아웃풋을 출력합니다.
 
-    # 각 헤드를 합치는 함수
+    # 각 헤드를 합치는 함수입니다.
     def merge_heads(self, x):
         x = x.permute(0, 2, 1, 3).contiguous() # 회전축을 바꾸기 위해 사용하며 계산에서 메모리 접근을 향상시키기 위한 목적
         new_x_shape = x.size()[:-2] + (x.size(-2) * x.size(-1),)
@@ -184,14 +184,14 @@ class Attention(nn.Module):
         else:
             return x.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
 
-    # 모델에서 행해져야하는 계산을 정의
+    # 어텐션 레이어의 진행방향을 나타냅니다.
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
         x = self.c_attn(x)
         query, key, value = x.split(self.split_size, dim=2) #ㅋ q, k, v를 스플릿 사이즈로 나눔
         query = self.split_heads(query)
         key = self.split_heads(key, k=True)
         value = self.split_heads(value)
-        if layer_past is not None:                    # 중간에 있는 레이어는 q,k,v를 다시 만들 필요없으므로
+        if layer_past is not None:                  
             past_key, past_value = layer_past[0].transpose(-2, -1), layer_past[1]  # transpose back cf below
             key = torch.cat((past_key, key), dim=-1)
             value = torch.cat((past_value, value), dim=-2)
@@ -201,29 +201,29 @@ class Attention(nn.Module):
         a = attn_outputs[0]  # self-attention 레이어의 아웃풋
 
         a = self.merge_heads(a)
-        a = self.c_proj(a)
+        a = self.c_proj(a)  # 다음레이어에 넘겨주기 위해 proj 가중치 학습 매트릭스를 사용합니다.
         a = self.resid_dropout(a)
 
         outputs = [a, present] + attn_outputs[1:]
-        return outputs  # a, present, (attentions)
+        return outputs  # a, present, (attentions) 어텐션 레이어의 최종 아웃풋을 출력합니다.    
 
-# FFN에 대한 클래스
+# FFN에 대한 클래스입니다.
 class MLP(nn.Module`):
     def __init__(self, n_state, config):  # in MLP: n_state=3072 (4 * n_embd)
         super().__init__()
-        nx = config.n_embd  # nx는 임베딩 차원 크기
-        self.c_fc = Conv1D(n_state, nx) # fc 가중치 학습 매트릭스
-        self.c_proj = Conv1D(nx, n_state) # 디코더 블록 아웃풋시 가중치 학습 매트릭스
-        self.act = gelu # 액티베이션 펑션
+        nx = config.n_embd  # nx는 임베딩 차원 크기입니다.
+        self.c_fc = Conv1D(n_state, nx) # fc 가중치 학습 매트릭스입니다.
+        self.c_proj = Conv1D(nx, n_state) # 디코더 블록 아웃풋시 가중치 학습 매트릭스입니다.
+        self.act = gelu # 액티베이션 펑션입니다.
         self.dropout = nn.Dropout(config.resid_pdrop)
-    # FFN 레이어 진행과정
+    # FFN 레이어 진행과정입니다.
     def forward(self, x):
         h = self.act(self.c_fc(x))
         h2 = self.c_proj(h)         
         return self.dropout(h2)
 
-# 하나의 트랜스포머 블록에 대해 서브레이어 및 진행 클래스
-# 구성요소는 self-attention layer, ln_1 layer, mlp layer, ln_2 layer
+# 하나의 트랜스포머 블록에 대한 클래스입니다.
+# 구성요소는 self-attention layer, ln_1 layer, mlp layer, ln_2 layer입니다.
 class Block(nn.Module):
     def __init__(self, n_ctx, config, scale=False):
         super().__init__()
@@ -246,15 +246,15 @@ class Block(nn.Module):
         outputs = [x] + output_attn[1:]
         return outputs  # x, present, (attentions)
 
-# pre-train 모델을 로드하기위한 클래스
+# pre-train 모델을 로드하기위한 클래스입니다.
 class GPT2PreTrainedModel(PreTrainedModel):
     """ An abstract class to handle weights initialization and
         a simple interface for downloading and loading pretrained models.
     """
 
     config_class = GPT2Config
-    pretrained_model_archive_map = GPT2_PRETRAINED_MODEL_ARCHIVE_MAP #모델 가지고 오는 위치
-    load_tf_weights = load_tf_weights_in_gpt2 # 웨이트값 로드
+    pretrained_model_archive_map = GPT2_PRETRAINED_MODEL_ARCHIVE_MAP #모델을 가지고 오는 위치입니다.
+    load_tf_weights = load_tf_weights_in_gpt2 # 웨이트값을 로드합니다.
     base_model_prefix = "transformer"
 
     def __init__(self, *inputs, **kwargs):      
@@ -263,7 +263,7 @@ class GPT2PreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         """ Initialize the weights.
         """
-        if isinstance(module, (nn.Linear, nn.Embedding, Conv1D)):    # 형식을 확인하고 올바를 때 가져오라는 설정
+        if isinstance(module, (nn.Linear, nn.Embedding, Conv1D)):    # 값을 확인하고 올바를 때 가져오라는 것입니다.
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
@@ -273,28 +273,28 @@ class GPT2PreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-# GPT 모델 전체에 대한 클래스 pretrainmodel 클래스를 상속
+# GPT 모델 전체에 대한 클래스 pretrainmodel 클래스를 상속합니다.
 class GPT2Model(GPT2PreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.output_hidden_states = config.output_hidden_states
+        self.output_hidden_states = config.output_hidden_states  
         self.output_attentions = config.output_attentions
         self.output_past = config.output_past
 
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        self.wpe = nn.Embedding(config.n_positions, config.n_embd)
-        self.drop = nn.Dropout(config.embd_pdrop)
-        self.h = nn.ModuleList([Block(config.n_ctx, config, scale=True) for _ in range(config.n_layer)])
-        self.ln_f = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd)      # 토큰 임베딩입니다.
+        self.wpe = nn.Embedding(config.n_positions, config.n_embd)     # 포지션 임베딩입니다.
+        self.drop = nn.Dropout(config.embd_pdrop)                      # 임베딩에서 드랍아웃할 때 사용합니다.
+        self.h = nn.ModuleList([Block(config.n_ctx, config, scale=True) for _ in range(config.n_layer)]) # 한개의 디코더 블록입니다.
+        self.ln_f = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)    # LN 정규화입니다.
+ 
+        self.init_weights()                                                  
 
-        self.init_weights()
-
-    def get_input_embeddings(self):   # 임베딩 매트릭스 가져오기
+    def get_input_embeddings(self):   # 임베딩 매트릭스 가져옵니다.
         return self.wte
 
     def set_input_embeddings(self, new_embeddings):
-        self.wte = new_embeddings     # 새로운 매트릭스
+        self.wte = new_embeddings     # 이 모델의 매트릭스를 만듭니다.
 
     def _prune_heads(self, heads_to_prune):
         """ Prunes heads of the model.
@@ -303,6 +303,7 @@ class GPT2Model(GPT2PreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.h[layer].attn.prune_heads(heads)
 
+    # 모델 전체의 진행입니다.
     def forward(
         self,
         input_ids=None,
@@ -480,7 +481,8 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
 
     def get_output_embeddings(self):
         return self.lm_head
-
+    
+    # 생성을 위한 인풋을 준비합니다. 과거 정보가 있으면 마지막 토큰 아이디만 있으면 됩니다. 
     def prepare_inputs_for_generation(self, input_ids, **kwargs):
         # only last token for inputs_ids if past is defined in kwargs
         if "past" in kwargs and kwargs["past"]:
@@ -512,7 +514,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         )
         hidden_states = transformer_outputs[0]
 
-        lm_logits = self.lm_head(hidden_states)
+        lm_logits = self.lm_head(hidden_states) # 마지막에 로짓함수로 나타내는 부분입니다.
 
         outputs = (lm_logits,) + transformer_outputs[1:]
         if labels is not None:
