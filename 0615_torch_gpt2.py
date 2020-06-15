@@ -306,8 +306,7 @@ class GPT2Model(GPT2PreTrainedModel):
     super().__init__(config)
     self.output_hidden_states = config.output_hidden_states
     self.output_attentions = config.output_attentions
-    self.output_past = config.output_past
-
+    self.output_past = config.output_past # 미리 계산된 값 사용
     self.wte = nn.Embedding(config.vocab_size, config.n_embd)
     self.wpe = nn.Embedding(config.n_positions, config.n_embd)
     self.drop = nn.Dropout(config.embd_pdrop)
@@ -344,6 +343,7 @@ class GPT2Model(GPT2PreTrainedModel):
       raise ValueError(
           "You cannot specify both input_ids and inputs_embeds at the same time")
     elif input_ids is not None:
+      # input_shape은 input_ids의 사이즈
       input_shape = input_ids.size()
       input_ids = input_ids.view(-1, input_shape[-1])
       batch_size = input_ids.shape[0]
@@ -371,27 +371,16 @@ class GPT2Model(GPT2PreTrainedModel):
 
     # Attention mask.
     if attention_mask is not None:
-      attention_mask = attention_mask.view(batch_size, -1)
-      # We create a 3D attention mask from a 2D tensor mask.
-      # Sizes are [batch_size, 1, 1, to_seq_length]
-      # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
-      # this attention mask is more simple than the triangular masking of causal attention
-      # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
-      attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-
-      # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-      # masked positions, this operation will create a tensor which is 0.0 for
-      # positions we want to attend and -10000.0 for masked positions.
-      # Since we are adding it to the raw scores before the softmax, this is
-      # effectively the same as removing these entirely.
+      # batch size, 1, 1, to_seq_length(여기서는 1024)
+      attention_mask = attention_mask.view(batch_size, -1)# 1024를 배치 사이즈만큼 잘라서 쌓아올림
+      attention_mask = attention_mask.unsqueeze(1).unsqueeze(2) # 차원 추가
+      
+      # 마스킹된 값을 0에 가까운 무의미한 값을 만들기위한 계산과정
       attention_mask = attention_mask.to(dtype=next(
           self.parameters()).dtype)  # fp16 compatibility
       attention_mask = (1.0 - attention_mask) * -10000.0
 
-    # Prepare head mask if needed
-    # 1.0 in head_mask indicate we keep the head
-    # attention_probs has shape bsz x n_heads x N x N
-    # head_mask has shape n_layer x batch x n_heads x N x N
+    # head mask가 필요한 경우 사용합니다.
     if head_mask is not None:
       if head_mask.dim() == 1:
         head_mask = head_mask.unsqueeze(
@@ -407,21 +396,28 @@ class GPT2Model(GPT2PreTrainedModel):
     else:
       head_mask = [None] * self.config.n_layer
 
+    # input_embeds가 없을 때 input_ids로 wte 임베딩한 값을 담습니다.
     if inputs_embeds is None:
-      inputs_embeds = self.wte(input_ids)
+      inputs_embeds = self.wte(input_ids) # self.wte = nn.Embedding(config.vocab_size, config.n_embd)
+    # position_embeds는 position_ids로 wpe 임베딩
     position_embeds = self.wpe(position_ids)
+    # token_type_ids가 있으면 token_type_ids적용하고
     if token_type_ids is not None:
       token_type_embeds = self.wte(token_type_ids)
+    # token_type_ids가 없으면 0으로 처리
     else:
       token_type_embeds = 0
+    # hidden_state에 inputs_embeds,position_embeds,token_type_embeds를 더한 값을 담습니다.
     hidden_states = inputs_embeds + position_embeds + token_type_embeds
     hidden_states = self.drop(hidden_states)
 
+    # output_shape에 input_shape와 hidden_states의 마지막 차원 사이즈 값을 더해 담습니다. (튜플 1개 요소만 있음)
     output_shape = input_shape + (hidden_states.size(-1),)
 
     presents = ()
     all_attentions = []
     all_hidden_states = ()
+    # h와 past를 각 요소 순서대로 묶고 이를 인덱스로 반복하여 튜플 형식의 자료를 만들고 인덱스 번호 i와 block, layer_past를 튜플 형식으로 담습니다. 즉, h는 block, past는 layer_past
     for i, (block, layer_past) in enumerate(zip(self.h, past)):
       if self.output_hidden_states:
         all_hidden_states = all_hidden_states + \
@@ -438,7 +434,8 @@ class GPT2Model(GPT2PreTrainedModel):
 
       if self.output_attentions:
         all_attentions.append(outputs[2])
-
+    
+    # 노말라이제이션, 여기서는 gelu
     hidden_states = self.ln_f(hidden_states)
 
     hidden_states = hidden_states.view(*output_shape)
@@ -467,16 +464,17 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
   def __init__(self, config):
     super().__init__(config)
     self.transformer = GPT2Model(config)
-    self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-
+    self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # nn.Linear(768, 50000)
+    # 만약 감정임베딩을 이전 layer와 concat한다면 여기에 embedding_layer 추가
     self.init_weights()
 
   def get_output_embeddings(self):
-    return self.lm_head
+    return self.lm_head # 여기서는 nn.Linear(768, 50000, bias=False)
 
   def prepare_inputs_for_generation(self, input_ids, **kwargs):
     # only last token for inputs_ids if past is defined in kwargs
     if "past" in kwargs and kwargs["past"]:
+      # last token
       input_ids = input_ids[:, -1].unsqueeze(-1)
 
     inputs = {"input_ids": input_ids}
@@ -493,6 +491,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
       head_mask=None,
       inputs_embeds=None,
       labels=None,
+      # 만약 감정임베딩 추가한다면 여기에 emotion 추가
   ):
     transformer_outputs = self.transformer(
         input_ids,
@@ -503,11 +502,13 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         head_mask=head_mask,
         inputs_embeds=inputs_embeds,
     )
-    hidden_states = transformer_outputs[0]
-
+    
+    # create emotion_embedding 
+    hidden_states = transformer_outputs[0] # + emotion_embedding
+    
     lm_logits = self.lm_head(hidden_states)
 
-    # need shift?
+    # 라벨이 있으면 로스 값 계산
     if labels is not None:
       # Shift so that tokens < n predict n
       # shift_logits = lm_logits[..., :-1, :].contiguous()
@@ -539,67 +540,6 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
 
 
 class GPT2DoubleHeadsModel(GPT2PreTrainedModel):
-  r"""
-      **mc_token_ids**: (`optional`, default to index of the last token of the input) ``torch.LongTensor`` of shape ``(batch_size, num_choices)``:
-          Index of the classification token in each input sequence.
-          Selected in the range ``[0, input_ids.size(-1) - 1[``.
-      **lm_labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
-          Labels for language modeling.
-          Note that the labels **are shifted** inside the model, i.e. you can set ``lm_labels = input_ids``
-          Indices are selected in ``[-1, 0, ..., config.vocab_size]``
-          All labels set to ``-100`` are ignored (masked), the loss is only
-          computed for labels in ``[0, ..., config.vocab_size]``
-      **mc_labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size)``:
-          Labels for computing the multiple choice classification loss.
-          Indices should be in ``[0, ..., num_choices]`` where `num_choices` is the size of the second dimension
-          of the input tensors. (see `input_ids` above)
-
-  Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
-      **lm_loss**: (`optional`, returned when ``lm_labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
-          Language modeling loss.
-      **mc_loss**: (`optional`, returned when ``multiple_choice_labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
-          Multiple choice classification loss.
-      **lm_prediction_scores**: ``torch.FloatTensor`` of shape ``(batch_size, num_choices, sequence_length, config.vocab_size)``
-          Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-      **mc_prediction_scores**: ``torch.FloatTensor`` of shape ``(batch_size, num_choices)``
-          Prediction scores of the multiplechoice classification head (scores for each choice before SoftMax).
-      **past**:
-          list of ``torch.FloatTensor`` (one for each layer) of shape ``(2, batch_size, num_heads, sequence_length, embed_size_per_head)``:
-          that contains pre-computed hidden-states (key and values in the attention blocks).
-          Can be used (see `past` input) to speed up sequential decoding. The token ids which have their past given to this model
-          should not be passed as input ids as they have already been computed.
-      **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
-          list of ``torch.FloatTensor`` (one for the output of each layer + the output of the embeddings)
-          of shape ``(batch_size, sequence_length, hidden_size)``:
-          Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-      **attentions**: (`optional`, returned when ``config.output_attentions=True``)
-          list of ``torch.FloatTensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
-          Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
-  Examples::
-
-      import torch
-      from transformers import GPT2Tokenizer, GPT2DoubleHeadsModel
-
-      tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-      model = GPT2DoubleHeadsModel.from_pretrained('gpt2')
-
-      # Add a [CLS] to the vocabulary (we should train it also!)
-      tokenizer.add_special_tokens({'cls_token': '[CLS]'})
-      model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
-      print(tokenizer.cls_token_id, len(tokenizer))  # The newly token the last token of the vocabulary
-
-      choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
-      encoded_choices = [tokenizer.encode(s) for s in choices]
-      cls_token_location = [tokens.index(tokenizer.cls_token_id) for tokens in encoded_choices]
-
-      input_ids = torch.tensor(encoded_choices).unsqueeze(0)  # Batch size: 1, number of choices: 2
-      mc_token_ids = torch.tensor([cls_token_location])  # Batch size: 1
-
-      outputs = model(input_ids, mc_token_ids=mc_token_ids)
-      lm_prediction_scores, mc_prediction_scores = outputs[:2]
-
-  """
 
   def __init__(self, config):
     super().__init__(config)
