@@ -47,4 +47,11 @@
 * **demo.py** 
 * demo_utils.py
 * env.py
-* prepropy
+* prepro.py : 데이터 프리프로세싱
+* discord_bot.py : Discord bot
+* interact.py : Test script
+* run.sh : Training script
+* run_eval.sh : Evaluation script
+* bot.py : Code for easier test
+* run_sample.sh - Test script to test for a few sentences
+* sample.py - Test code to test for a few sentences
