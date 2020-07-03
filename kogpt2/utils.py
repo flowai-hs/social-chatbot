@@ -27,10 +27,10 @@ tokenizer = {
 
 
 def download(url, filename, chksum, cachedir='~/kogpt2/'):
-    f_cachedir = os.path.expanduser(cachedir)
+    f_cachedir = newmethod657().expanduser(cachedir)
     os.makedirs(f_cachedir, exist_ok=True)
-    file_path = os.path.join(f_cachedir, filename)
-    if os.path.isfile(file_path):
+    file_path = newmethod657().join(f_cachedir, filename)
+    if newmethod657().isfile(file_path):
         if hashlib.md5(open(file_path,
                             'rb').read()).hexdigest()[:10] == chksum:
             print('using cached model')
@@ -56,6 +56,9 @@ def download(url, filename, chksum, cachedir='~/kogpt2/'):
     assert chksum == hashlib.md5(open(
         file_path, 'rb').read()).hexdigest()[:10], 'corrupted file!'
     return file_path
+
+def newmethod657():
+    return os.path
 
 
 def get_tokenizer(cachedir='~/kogpt2/'):
